@@ -1,0 +1,11 @@
+{
+    "idf.adapterTargetName": "esp32",
+    "files.associations": {
+        "esp_camera.h": "c",
+        "esp_log.h": "c",
+        "cstdint": "cpp",
+        "app_camera_esp.h": "c",
+        "sdkconfig.h": "c"
+    },
+    "idf.port": "/dev/tty.usbserial-11240"
+}

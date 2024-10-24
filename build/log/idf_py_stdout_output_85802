@@ -1,0 +1,55 @@
+[1/5] cd /Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build/esp-idf/esptool_py && /Users/arianmoeini/.espressif/python_env/idf5.4_py3.13_env/bin/python /Users/arianmoeini/Desktop/hardware/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build/partition_table/partition-table.bin /Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build/esp-eye-image-classification.bin
+esp-eye-image-classification.bin binary size 0x5d450 bytes. Smallest app partition is 0x100000 bytes. 0xa2bb0 bytes (64%) free.
+[2/5] Performing build step for 'bootloader'
+[1/1] cd /Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build/bootloader/esp-idf/esptool_py && /Users/arianmoeini/.espressif/python_env/idf5.4_py3.13_env/bin/python /Users/arianmoeini/Desktop/hardware/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build/bootloader/bootloader.bin
+Bootloader binary size 0x6570 bytes. 0xa90 bytes (9%) free.
+[3/5] No install step for 'bootloader'
+[4/5] Completed 'bootloader'
+[4/5] cd /Users/arianmoeini/Desktop/hardware/esp-idf/components/esptool_py && /opt/homebrew/Cellar/cmake/3.30.5/bin/cmake -D IDF_PATH=/Users/arianmoeini/Desktop/hardware/esp-idf -D "SERIAL_TOOL=/Users/arianmoeini/.espressif/python_env/idf5.4_py3.13_env/bin/python;;/Users/arianmoeini/Desktop/hardware/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build -P /Users/arianmoeini/Desktop/hardware/esp-idf/components/esptool_py/run_serial_tool.cmake
+esptool.py --chip esp32 -p /dev/cu.SLAB_USBtoUART -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 2MB 0x1000 bootloader/bootloader.bin 0x10000 esp-eye-image-classification.bin 0x8000 partition_table/partition-table.bin
+esptool.py v4.8.1
+Serial port /dev/cu.SLAB_USBtoUART
+Connecting....
+Chip is ESP32-D0WD (revision v1.0)
+Features: WiFi, BT, Dual Core, 240MHz, VRef calibration in efuse, Coding Scheme None
+Crystal is 40MHz
+MAC: 94:b5:55:b4:17:8c
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00001000 to 0x00007fff...
+Flash will be erased from 0x00010000 to 0x0006dfff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+SHA digest in image updated
+Compressed 25968 bytes to 16368...
+Writing at 0x00001000... (100 %)
+Wrote 25968 bytes (16368 compressed) at 0x00001000 in 0.8 seconds (effective 274.7 kbit/s)...
+Hash of data verified.
+Compressed 382032 bytes to 241559...
+Writing at 0x00010000... (6 %)
+Writing at 0x0001eee0... (13 %)
+Writing at 0x00023277... (20 %)
+Writing at 0x000276ea... (26 %)
+Writing at 0x0002bb30... (33 %)
+Writing at 0x0002ff37... (40 %)
+Writing at 0x00035340... (46 %)
+Writing at 0x0003da36... (53 %)
+Writing at 0x0004378f... (60 %)
+Writing at 0x0004a5d7... (66 %)
+Writing at 0x0004f83a... (73 %)
+Writing at 0x00054c30... (80 %)
+Writing at 0x0005ae1f... (86 %)
+Writing at 0x00062a47... (93 %)
+Writing at 0x00068946... (100 %)
+Wrote 382032 bytes (241559 compressed) at 0x00010000 in 5.9 seconds (effective 514.4 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 103...
+Writing at 0x00008000... (100 %)
+Wrote 3072 bytes (103 compressed) at 0x00008000 in 0.1 seconds (effective 328.1 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...

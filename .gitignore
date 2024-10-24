@@ -1,0 +1,17 @@
+   # Build directory
+   build/
+
+   # ESP-IDF specific
+   sdkconfig
+   sdkconfig.old
+
+   # Python virtual environment
+   venv/
+
+   # macOS specific
+   .DS_Store
+
+   # IDE specific (for VSCode)
+   .vscode/
+
+   # Add any other files or directories you want to ignore
