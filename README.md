@@ -2,12 +2,11 @@
 
 ## Overview
 
-This project implements real-time image classification on the ESP-EYE development board using TensorFlow Lite for Microcontrollers. The system captures images using the onboard camera, processes them through a pre-trained neural network, and outputs the classification results.
+This project demonstrates image classification on the ESP-EYE development board using TensorFlow Lite for Microcontrollers. Unlike real-time camera input, this implementation uses a static image converted to a C binary as input, which is then processed through a pre-trained neural network to output classification results.
 
 ## Hardware Components
 
 - ESP-EYE development board
-- Onboard OV2640 camera
 - ESP32-S3 microcontroller
 - 8MB PSRAM
 - 4MB Flash memory
@@ -17,10 +16,11 @@ This project implements real-time image classification on the ESP-EYE developmen
 - ESP-IDF (Espressif IoT Development Framework)
 - TensorFlow Lite for Microcontrollers
 - Custom image classification model (CIFAR-10 based)
+- Static image data converted to C binary
 
 ## Features
 
-- Real-time image capture and processing
+- Static image processing using pre-converted image data
 - Low-latency inference using TensorFlow Lite
 - Classification of images into 10 categories (CIFAR-10 classes)
 - Serial output of classification results
@@ -75,21 +75,30 @@ This project implements real-time image classification on the ESP-EYE developmen
 
 ## Usage
 
-Once flashed, the ESP-EYE will automatically start capturing images and performing classifications. The results will be output via the serial monitor.
+Once flashed, the ESP-EYE will process the static image data and perform classification. The results will be output via the serial monitor.
 
 To interpret the results:
-- Each classification will show the predicted class and confidence level
-- The system updates classifications in real-time as the camera captures new images
+- The classification will show the predicted class and confidence level for the static image
+- Unlike a real-time system, this will be a one-time classification of the pre-loaded image
 
-## Model Training
+## Static Image Data
 
-The image classification model was trained on the CIFAR-10 dataset. For details on training your own model or using a different dataset, refer to the `trainingModel/` directory.
+The project uses a static image converted to a C binary. This image data is included in the project files and is processed by the TensorFlow Lite model.
+
+To use a different image:
+1. Convert your desired image to the appropriate format and size
+2. Update the C binary data in the project
+3. Rebuild and flash the project
+
+## Model Information
+
+The image classification model is based on the CIFAR-10 dataset, capable of classifying images into 10 categories. The model is quantized and optimized for running on the ESP32-S3 microcontroller.
 
 ## Troubleshooting
 
 - Ensure all connections are secure
-- Check that the ESP-EYE's camera is unobstructed and properly aligned
 - Verify that the serial monitor is set to the correct baud rate (typically 115200)
+- Check that the static image data is correctly included in the build
 
 ## Contributing
 
@@ -97,6 +106,10 @@ Contributions to this project are welcome. Please fork the repository and submit
 
 ## License
 
-Not open source.
+[Specify your license here, e.g., MIT License, Apache 2.0, etc.]
 
+## Acknowledgments
 
+- Espressif for the ESP-EYE development board and ESP-IDF
+- TensorFlow team for TensorFlow Lite for Microcontrollers
+- [Any other acknowledgments]
