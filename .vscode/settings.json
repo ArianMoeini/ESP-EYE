@@ -5,7 +5,8 @@
         "esp_log.h": "c",
         "cstdint": "cpp",
         "app_camera_esp.h": "c",
-        "sdkconfig.h": "c"
+        "sdkconfig.h": "c",
+        "thread": "cpp"
     },
     "idf.port": "/dev/tty.usbserial-11240"
 }

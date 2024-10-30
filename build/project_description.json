@@ -1,7 +1,7 @@
 {
     "version":            "1.1",
     "project_name":       "esp-eye-image-classification",
-    "project_version":    "v5.4-dev-3602-ga97a7b0962",
+    "project_version":    "537b5f8-dirty",
     "project_path":       "/Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification",
     "idf_path":           "/Users/arianmoeini/Desktop/hardware/esp-idf",
     "build_dir":          "/Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/build",
