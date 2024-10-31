@@ -59,9 +59,4 @@ main/test_hippo_image.h
 
 # Large files
 trainingModel/dataset.zip
-main/model/model.c
-main/model/model.cpp
-main/model/model2.c
-main/model2.cpp
-trainingModel/*.ipynb
 main/model/rgb_output.h
