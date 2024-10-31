@@ -1,31 +1,41 @@
 #include <stdio.h>
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_log.h"
 #include "inference_handler.h"
-#include "model/images.h"
+#include "test_hippo_image.h"
+#include <inttypes.h>
+#include "esp_cpu.h"
+#include "esp_system.h"  // Add this for esp_get_cpu_freq_mhz()
+
 
 static const char* TAG = "Main";
 
 void app_main(void)
 {
     ESP_LOGI(TAG, "Initializing Inference Handler...");
-
-    // Initialize the inference handler
+    
     if (setup_inference() != 0) {
-        ESP_LOGE(TAG, "Failed to setup inference handler");
+        ESP_LOGE(TAG, "Failed to setup inference");
         return;
     }
-
+    
     ESP_LOGI(TAG, "Inference Handler initialized successfully.");
 
-    // Iterate over predefined images and run inference
-    for (size_t i = 0; i < num_images; i++) {
-        ESP_LOGI(TAG, "Running inference on Image %zu...", i);
-        run_inference(images[i]);
-        vTaskDelay(pdMS_TO_TICKS(2000));  // Delay between inferences (2 seconds)
-    }
-
-    ESP_LOGI(TAG, "All inferences completed.");
+    // Run continuously
+    int count = 0;
+    //while (1) {
+        ESP_LOGI(TAG, "Running inference batch %d...", count++);
+        
+        uint32_t start_cycles = esp_cpu_get_cycle_count();
+        run_inference(test_hippo_data);
+        uint32_t end_cycles = esp_cpu_get_cycle_count();
+        
+        ESP_LOGI(TAG, "Cycles taken: %" PRIu32, end_cycles - start_cycles);
+        // calculate to sedonds based on CPU frequency = 240 MHz
+        double cycles_to_seconds = (end_cycles - start_cycles) / 240000000.0;
+        ESP_LOGI(TAG, "Time taken: %.6f seconds", cycles_to_seconds);
+        //vTaskDelay(pdMS_TO_TICKS(2000));
+        ESP_LOGI(TAG, "----------------------------------------");
+    //}
 }

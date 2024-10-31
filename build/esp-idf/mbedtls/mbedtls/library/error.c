@@ -1,1 +1,0 @@
-/Users/arianmoeini/Desktop/hardware/esp-idf/components/mbedtls/mbedtls/library/error.c

@@ -14,7 +14,7 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 # Input image path
 IMAGE_PATH = os.path.join(
     PROJECT_ROOT,
-    "trainingModel/dataset/test/hippo/seq000004-img000005-non-local.JPG"
+    "/Users/arianmoeini/Desktop/hardware/esp-idf/examples/arian/esp-eye-image-classification/trainingModel/dataset/test/hippo/seq000057-img000071-non-local.JPG"
 )
 
 # Output header file path

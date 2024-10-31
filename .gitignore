@@ -1,17 +1,67 @@
-   # Build directory
-   build/
+# Completely ignore build directory and all its contents
+build/**/*
+build/
+**/build/
+**/build/**
+build/log/
+build/log/**/*
 
-   # ESP-IDF specific
-   sdkconfig
-   sdkconfig.old
+# Project specific directories
+components/
+trainingModel/dataset/
 
-   # Python virtual environment
-   venv/
+# Prerequisites
+*.d
 
-   # macOS specific
-   .DS_Store
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
 
-   # IDE specific (for VSCode)
-   .vscode/
+# ESP-IDF specific
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
 
-   # Add any other files or directories you want to ignore
+# Binary and media files
+*.bin
+*.raw
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.zip
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python virtual environment
+venv/
+**/venv/
+trainingModel/venvpython/
+
+# macOS specific
+.DS_Store
+
+# Model files
+*.h5
+*.tflite
+trainingModel/cifar10_model.h5
+trainingModel/cifar10_model_quant.tflite
+
+# Test image data
+main/test_hippo_image.h
+
+# Large files
+trainingModel/dataset.zip
+main/model/model.c
+main/model/model.cpp
+main/model/model2.c
+main/model2.cpp
+trainingModel/*.ipynb
+main/model/rgb_output.h

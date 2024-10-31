@@ -1,21 +1,23 @@
-#ifndef INFERENCE_HANDLER_H_
-#define INFERENCE_HANDLER_H_
+#ifndef INFERENCE_HANDLER_H
+#define INFERENCE_HANDLER_H
 
 #include <stdint.h>
-#include "model/model.h"  // Ensure correct path
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Initialize the inference system
-int setup_inference();
+int setup_inference(void);
 
-// Run one inference cycle
+// Run inference on a single image
 void run_inference(const uint8_t* image_data);
+
+// Cleanup resources
+void cleanup_inference(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // INFERENCE_HANDLER_H_
+#endif // INFERENCE_HANDLER_H

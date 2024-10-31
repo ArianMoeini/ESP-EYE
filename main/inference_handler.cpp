@@ -101,24 +101,24 @@ void run_inference(const uint8_t* image_data) {
         return;
     }
 
-    int64_t start_time = get_time_us();
-    int64_t stage_time;
+    // int64_t start_time = get_time_us();
+    // int64_t stage_time;
 
-    // Measure copy time
-    stage_time = get_time_us();
-    memcpy(input->data.uint8, image_data, 224 * 224 * 3);
-    stats.copy_time_us += get_time_us() - stage_time;
+    // // Measure copy time
+    // stage_time = get_time_us();
+    // memcpy(input->data.uint8, image_data, 224 * 224 * 3);
+    // stats.copy_time_us += get_time_us() - stage_time;
 
-    // Measure inference time
-    stage_time = get_time_us();
-    if (interpreter->Invoke() != kTfLiteOk) {
-        ESP_LOGE(TAG, "Inference failed");
-        return;
-    }
-    stats.inference_time_us += get_time_us() - stage_time;
+    // // Measure inference time
+    // stage_time = get_time_us();
+    // if (interpreter->Invoke() != kTfLiteOk) {
+    //     ESP_LOGE(TAG, "Inference failed");
+    //     return;
+    // }
+    // stats.inference_time_us += get_time_us() - stage_time;
 
-    // Measure post-processing time
-    stage_time = get_time_us();
+    // // Measure post-processing time
+    // stage_time = get_time_us();
     
     TfLiteTensor* output = interpreter->output(0);
     float confidence;
@@ -137,19 +137,19 @@ void run_inference(const uint8_t* image_data) {
 
     float confidence_percent = predicted_class == 0 ? confidence * 100 : (1 - confidence) * 100;
     
-    stats.post_process_time_us += get_time_us() - stage_time;
+    // stats.post_process_time_us += get_time_us() - stage_time;
 
-    // Calculate total time
-    stats.total_time_us += get_time_us() - start_time;
-    stats.count++;
+    // // Calculate total time
+    // stats.total_time_us += get_time_us() - start_time;
+    // stats.count++;
 
     // Log the results with timing information
     ESP_LOGI(TAG, "Prediction: %s (%.2f%% confidence)", 
              CLASS_NAMES[predicted_class], confidence_percent);
-    ESP_LOGI(TAG, "Timing for this inference:");
-    ESP_LOGI(TAG, "  Copy time: %lld us", (get_time_us() - start_time) - stats.inference_time_us);
-    ESP_LOGI(TAG, "  Inference time: %lld us", stats.inference_time_us);
-    ESP_LOGI(TAG, "  Total time: %lld us", get_time_us() - start_time);
+    // ESP_LOGI(TAG, "Timing for this inference:");
+    // ESP_LOGI(TAG, "  Copy time: %lld us", (get_time_us() - start_time) - stats.inference_time_us);
+    // ESP_LOGI(TAG, "  Inference time: %lld us", stats.inference_time_us);
+    // ESP_LOGI(TAG, "  Total time: %lld us", get_time_us() - start_time);
 }
 
 void cleanup_inference() {
