@@ -2,18 +2,19 @@
 #define INFERENCE_HANDLER_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include "esp_timer.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Initialize the inference system
+// Constants
+#define IMAGE_SIZE (224 * 224 * 3)
+
+// Function declarations
 int setup_inference(void);
-
-// Run inference on a single image
 void run_inference(const uint8_t* image_data);
-
-// Cleanup resources
 void cleanup_inference(void);
 
 #ifdef __cplusplus

@@ -1,203 +1,190 @@
 #include "inference_handler.h"
-#include "model.h"  // This should match your model header file name
+#include "model.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
-#include <sys/time.h>
+#include "esp_timer.h"
+#include "esp_system.h"
+#include <inttypes.h>
+#include "esp_task_wdt.h"  // Add this at the top with other includes
 
+
+// TFLite includes
 #include "tensorflow/lite/micro/micro_interpreter.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/micro/micro_op_resolver.h"
-#include "tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
+using namespace tflite;
 
 static const char* TAG = "InferenceHandler";
 
-// Declare the op resolver before other TFLite variables
-static tflite::MicroMutableOpResolver<9> micro_op_resolver;
-
-// TensorFlow Lite variables
-static const tflite::Model* model_ptr = nullptr;
-static tflite::MicroInterpreter* interpreter = nullptr;
+// TensorFlow Lite globals
+static const tflite::Model* model = nullptr;
+static MicroInterpreter* interpreter = nullptr;
 static TfLiteTensor* input = nullptr;
+static TfLiteTensor* output = nullptr;
 
-// Tensor arena - allocate from PSRAM
-constexpr int kTensorArenaSize = 2 * 1024 * 1024;  // Changed from 1MB to 2MB
-static uint8_t* tensor_arena = nullptr;
+// Arena memory
+constexpr int kTensorArenaSize = 512 * 1024;  // 512KB should be enough for the smaller model
+static uint8_t *tensor_arena = nullptr;
 
-// Binary classification names
-static const char* CLASS_NAMES[] = {
-    "hippo", "other"
-};
+int setup_inference(void) {
+    // Allocate tensor arena from PSRAM
+    tensor_arena = (uint8_t*)heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!tensor_arena) {
+        ESP_LOGE(TAG, "Failed to allocate tensor arena");
+        return -1;
+    }
+    ESP_LOGI(TAG, "Tensor arena allocated at %p", tensor_arena);
 
-// Timing statistics structure
-typedef struct {
-    int64_t total_time_us;
-    int64_t copy_time_us;
-    int64_t inference_time_us;
-    int count;
-} inference_stats_t;
-
-static inference_stats_t stats = {
-    .total_time_us = 0,
-    .copy_time_us = 0,
-    .inference_time_us = 0,
-    .count = 0
-};
-
-static inline int64_t get_time_us() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000000L + (int64_t)tv.tv_usec;
-}
-
-int setup_inference() {
-    // Clean up any previous allocations
-    cleanup_inference();
-
-    // Allocate new tensor arena
-    tensor_arena = (uint8_t*)heap_caps_malloc(kTensorArenaSize, 
-        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT | MALLOC_CAP_32BIT);
-    if (tensor_arena == nullptr) {
-        ESP_LOGE(TAG, "Failed to allocate tensor arena in PSRAM");
+    // Load model
+    model = tflite::GetModel(cifar10_model_quant_tflite);
+    if (model->version() != TFLITE_SCHEMA_VERSION) {
+        ESP_LOGE(TAG, "Model version does not match Schema");
         return -1;
     }
 
-    // Log memory information
-    ESP_LOGI(TAG, "Tensor Arena allocated: %d bytes", kTensorArenaSize);
-    ESP_LOGI(TAG, "Tensor Arena address: %p", tensor_arena);
-
-    // Load the model
-    model_ptr = tflite::GetModel(cifar10_model_quant_tflite);  // Use your model name
-    if (model_ptr->version() != TFLITE_SCHEMA_VERSION) {
-        ESP_LOGE(TAG, "Model version mismatch!");
-        return -1;
-    }
-
-    // Register only the operations we need
+    // Create an op resolver with enough capacity
+    static MicroMutableOpResolver<20> micro_op_resolver;  // Adjust size as needed
     micro_op_resolver.AddConv2D();
     micro_op_resolver.AddMaxPool2D();
     micro_op_resolver.AddFullyConnected();
-    micro_op_resolver.AddMul();  // For rescaling
-    micro_op_resolver.AddAdd();  // For batch normalization
-    micro_op_resolver.AddMean(); // For global average pooling
+    micro_op_resolver.AddReshape();
+    micro_op_resolver.AddSoftmax();
+    micro_op_resolver.AddPad();
+    micro_op_resolver.AddMean();
     micro_op_resolver.AddQuantize();
     micro_op_resolver.AddDequantize();
+    micro_op_resolver.AddMul();
+    micro_op_resolver.AddAdd();
     micro_op_resolver.AddLogistic();
+    // Add other operators here
 
-    // Create interpreter
+    // Build the interpreter
     static tflite::MicroInterpreter static_interpreter(
-        model_ptr, micro_op_resolver, tensor_arena, kTensorArenaSize);
-    interpreter = &static_interpreter;  // Assign to global pointer
+        model,
+        micro_op_resolver,
+        tensor_arena,
+        kTensorArenaSize,
+        nullptr
+    );
+    interpreter = &static_interpreter;
 
-    // Allocate tensors
-    TfLiteStatus allocate_status = interpreter->AllocateTensors();
-    if (allocate_status != kTfLiteOk) {
-        ESP_LOGE(TAG, "AllocateTensors failed with status: %d", allocate_status);
+    // Allocate tensor buffers
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+        ESP_LOGE(TAG, "AllocateTensors() failed");
         return -1;
     }
 
-    // Get input tensor
     input = interpreter->input(0);
-    
-    // Log tensor information
-    ESP_LOGI(TAG, "Inference handler initialized successfully");
-    ESP_LOGI(TAG, "Tensor Arena size: %d bytes", kTensorArenaSize);
-    ESP_LOGI(TAG, "Input tensor dims: %dx%dx%d", 
-             input->dims->data[1], input->dims->data[2], input->dims->data[3]);
-    ESP_LOGI(TAG, "Input tensor type: %d", input->type);
-    ESP_LOGI(TAG, "Input tensor bytes: %d", input->bytes);
-    
+    output = interpreter->output(0);
+
+    ESP_LOGI(TAG, "Inference engine initialized successfully");
     return 0;
 }
 
-void run_inference(const uint8_t* image_data) {
-    if (!interpreter || !input) {
-        ESP_LOGE(TAG, "Interpreter not initialized");
+void run_inference(const uint8_t* image_buffer) {
+    if (!interpreter || !image_buffer) {
+        ESP_LOGE(TAG, "Invalid interpreter or buffer");
         return;
     }
 
-    int64_t start_time = get_time_us();
-    int64_t stage_time;
-
-    // Copy data
-    stage_time = get_time_us();
-    memcpy(input->data.uint8, image_data, 224 * 224 * 3);
-    stats.copy_time_us += get_time_us() - stage_time;
-
+    // Clear the entire tensor first
+    memset(input->data.uint8, 0, IMAGE_SIZE);
+    
+    // Copy new data
+    memcpy(input->data.uint8, image_buffer, IMAGE_SIZE);
+    
+    // Verify data distribution
+    int zeros = 0, non_zeros = 0;
+    uint8_t min_val = 255, max_val = 0;
+    
+    for (int i = 0; i < IMAGE_SIZE; i++) {
+        if (input->data.uint8[i] == 0) zeros++;
+        else non_zeros++;
+        if (input->data.uint8[i] < min_val) min_val = input->data.uint8[i];
+        if (input->data.uint8[i] > max_val) max_val = input->data.uint8[i];
+    }
+    
+    ESP_LOGI(TAG, "Tensor statistics:");
+    ESP_LOGI(TAG, "Min value: %d", min_val);
+    ESP_LOGI(TAG, "Max value: %d", max_val);
+    ESP_LOGI(TAG, "Zero pixels: %d", zeros);
+    ESP_LOGI(TAG, "Non-zero pixels: %d", non_zeros);
+    
+    // Sample values in a grid pattern
+    ESP_LOGI(TAG, "Sampling 3x3 grid across image:");
+    for (int y = 0; y < 64; y += 32) {
+        for (int x = 0; x < 64; x += 32) {
+            int idx = (y * 64 + x) * 3;  // RGB data
+            ESP_LOGI(TAG, "Position (%d,%d): R=%d G=%d B=%d", 
+                     x, y,
+                     input->data.uint8[idx],
+                     input->data.uint8[idx + 1],
+                     input->data.uint8[idx + 2]);
+        }
+    }
+    
+    // Reset watchdog before inference
+    esp_task_wdt_reset();
+    
+    // Start timing
+    int64_t start = esp_timer_get_time();
+    
     // Run inference
-    stage_time = get_time_us();
+    ESP_LOGI(TAG, "Starting inference...");
     TfLiteStatus invoke_status = interpreter->Invoke();
+    
+    // Reset watchdog after inference
+    esp_task_wdt_reset();
+    
     if (invoke_status != kTfLiteOk) {
-        ESP_LOGE(TAG, "Inference failed with status: %d", invoke_status);
+        ESP_LOGE(TAG, "Invoke failed");
         return;
     }
-    stats.inference_time_us += get_time_us() - stage_time;
 
-    // Process output - binary classification
+    // Calculate inference time
+    int64_t end = esp_timer_get_time();
+    int inference_time = (end - start) / 1000;
+    ESP_LOGI(TAG, "Inference took %d ms", inference_time);
+
+    // Get output
     TfLiteTensor* output = interpreter->output(0);
     
-    // Handle quantized output
-    float confidence;
-    if (output->type == kTfLiteUInt8) {
+    // Log results
+    if (output->type == kTfLiteFloat32) {
+        float* results = output->data.f;
+        ESP_LOGI(TAG, "Inference results (float):");
+        ESP_LOGI(TAG, "Class 0: %.2f%%", results[0] * 100);
+    } else if (output->type == kTfLiteUInt8) {
+        uint8_t* results = output->data.uint8;
         float scale = output->params.scale;
         int zero_point = output->params.zero_point;
-        confidence = (output->data.uint8[0] - zero_point) * scale;
-    } else {
-        confidence = output->data.f[0];
+        float probability = (results[0] - zero_point) * scale;
+        
+        ESP_LOGI(TAG, "Inference results:");
+        ESP_LOGI(TAG, "Probability of Hippo: %.2f%%", probability * 100);
+        ESP_LOGI(TAG, "Classification: %s", 
+                 (probability >= 0.5) ? "HIPPO DETECTED" : "NO HIPPO DETECTED");
     }
-
-    // Binary classification threshold
-    bool is_hippo = confidence >= 0.5f;
-    float confidence_percent = is_hippo ? confidence * 100 : (1 - confidence) * 100;
-
-    ESP_LOGI(TAG, "Prediction: %s (%.2f%% confidence)", 
-             is_hippo ? "hippo" : "other", confidence_percent);
-
-    // Update timing stats
-    stats.total_time_us += get_time_us() - start_time;
-    stats.count++;
 }
 
-void cleanup_inference() {
-    if (tensor_arena != nullptr) {
+void cleanup_inference(void) {
+    if (tensor_arena) {
         heap_caps_free(tensor_arena);
         tensor_arena = nullptr;
     }
+    interpreter = nullptr;
+    input = nullptr;
+    output = nullptr;
 }
 
-// Add this function to print average statistics
-void print_inference_stats() {
-    if (stats.count == 0) {
-        ESP_LOGI(TAG, "No inference statistics available");
-        return;
-    }
-
-    float avg_total = stats.total_time_us / (float)stats.count;
-    float avg_copy = stats.copy_time_us / (float)stats.count;
-    float avg_inference = stats.inference_time_us / (float)stats.count;
-
-    ESP_LOGI(TAG, "Inference Statistics:");
-    ESP_LOGI(TAG, "  Average total time: %.2f ms", avg_total / 1000.0f);
-    ESP_LOGI(TAG, "  Average copy time: %.2f ms", avg_copy / 1000.0f);
-    ESP_LOGI(TAG, "  Average inference time: %.2f ms", avg_inference / 1000.0f);
-    ESP_LOGI(TAG, "  Total inferences: %d", stats.count);
-}
-
-// Update run_test_inference to run multiple times
-void run_test_inference() {
-    const int NUM_RUNS = 10;  // Number of times to run the inference
+void initialize_inference() {
+    // ... existing code ...
     
-    ESP_LOGI(TAG, "Running inference test %d times...", NUM_RUNS);
-    
-    // Reset statistics
-    memset(&stats, 0, sizeof(stats));
-    
-    // Run inference multiple times
-    for (int i = 0; i < NUM_RUNS; i++) {
-        ESP_LOGI(TAG, "Test run %d/%d", i + 1, NUM_RUNS);
-       // run_inference(test_hippo_image.h);
-    }
-    
-    // Print average statistics
-    print_inference_stats();
+    // Log detailed quantization info
+    ESP_LOGI(TAG, "Model Quantization Parameters:");
+    ESP_LOGI(TAG, "Input - Zero point: %" PRId32 ", Scale: %f", 
+             input->params.zero_point, input->params.scale);
+    ESP_LOGI(TAG, "Output - Zero point: %" PRId32 ", Scale: %f",
+             output->params.zero_point, output->params.scale);
 }

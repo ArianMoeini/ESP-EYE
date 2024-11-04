@@ -5,119 +5,71 @@ import cv2
 import numpy as np
 
 def preprocess_image(img):
-    """Preprocess image to match model input requirements"""
-    # Resize to 224x224 while maintaining aspect ratio
-    target_size = (224, 224)
+    # Ensure RGB order (TFLite typically expects RGB)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = cv2.resize(img, (64, 64))
     
-    # Calculate aspect ratio
-    h, w = img.shape[:2]
-    aspect = w / h
+    # Print detailed stats per channel
+    print("\nChannel statistics:")
+    for i, channel in enumerate(['R', 'G', 'B']):
+        values = img[:,:,i]
+        print(f"{channel}: min={values.min()}, max={values.max()}, mean={values.mean():.2f}")
     
-    # Determine padding
-    if aspect > 1:  # width > height
-        new_w = target_size[0]
-        new_h = int(new_w / aspect)
-        pad_h = (target_size[1] - new_h) // 2
-        pad_w = 0
-    else:  # height > width
-        new_h = target_size[1]
-        new_w = int(new_h * aspect)
-        pad_w = (target_size[0] - new_w) // 2
-        pad_h = 0
+    # Print 3x3 grid of pixel values
+    print("\nSampling 3x3 grid across image:")
+    for y in range(0, 64, 32):
+        for x in range(0, 64, 32):
+            pixel = img[y,x]
+            print(f"Position ({x},{y}): R={pixel[0]} G={pixel[1]} B={pixel[2]}")
     
-    # Resize
-    resized = cv2.resize(img, (new_w, new_h))
-    
-    # Create black canvas
-    processed = np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
-    
-    # Place resized image in center
-    if aspect > 1:
-        processed[pad_h:pad_h+new_h, :] = resized
-    else:
-        processed[:, pad_w:pad_w+new_w] = resized
-    
-    return processed
+    return img
 
-def send_image(port, image_path, baud_rate=115200):
+def send_image(port, baud_rate=115200, image_path=None):
     try:
-        print(f"Opening serial port {port} at {baud_rate} baud...")
-        ser = serial.Serial(
-            port,
-            baud_rate,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=1
-        )
-        
-        # Clear any existing data
+        ser = serial.Serial(port, baud_rate, timeout=1)
         ser.reset_input_buffer()
         ser.reset_output_buffer()
-        time.sleep(0.5)
         
-        # Process image
-        print("Processing image...")
+        # Read and process image
+        if image_path is None:
+            raise Exception("No image path provided")
         img = cv2.imread(image_path)
         if img is None:
-            raise Exception(f"Could not read image {image_path}")
-        
-        processed_img = preprocess_image(img)
-        img_bytes = processed_img.tobytes()
-        
-        # Verify image size
-        expected_size = 224 * 224 * 3
-        if len(img_bytes) != expected_size:
-            raise Exception(f"Invalid image size: got {len(img_bytes)}, expected {expected_size}")
-        
-        # Send START message
-        print("Sending START marker")
-        ser.write(f"START:{len(img_bytes)}\n".encode())
-        time.sleep(0.1)
-        
-        # Send image data with smaller chunks and longer delays
-        chunk_size = 512  # Reduced chunk size
-        total_sent = 0
-        
-        for i in range(0, len(img_bytes), chunk_size):
-            chunk = img_bytes[i:i + chunk_size]
-            bytes_written = ser.write(chunk)
-            total_sent += bytes_written
-            print(f"Sent {total_sent}/{len(img_bytes)} bytes")
-            time.sleep(0.1)  # Increased delay between chunks
+            raise Exception(f"Failed to load image: {image_path}")
             
-            # Verify all bytes were sent
-            if bytes_written != len(chunk):
-                raise Exception(f"Failed to send complete chunk: {bytes_written}/{len(chunk)}")
+        img = cv2.resize(img, (64, 64))
         
-        # Verify total bytes sent
-        if total_sent != len(img_bytes):
-            raise Exception(f"Failed to send complete image: {total_sent}/{len(img_bytes)}")
+        # Print image statistics
+        print(f"\nImage stats before sending:")
+        print(f"Shape: {img.shape}")
+        print(f"Min value: {img.min()}")
+        print(f"Max value: {img.max()}")
+        print(f"Mean value: {img.mean():.2f}")
+        print(f"First 10 pixels: {img.flatten()[:10]}")
         
-        # Send END marker with delay
-        time.sleep(0.2)
-        print("Sending END marker")
-        ser.write(b"END\n")
+        # Convert to bytes and send
+        img_bytes = img.tobytes()
+        print(f"First 10 bytes being sent: {list(img_bytes[:10])}")
         
-        # Wait for result
-        print("Waiting for processing result...")
-        timeout = 10  # 10 seconds timeout
-        start_time = time.time()
+        # Send in smaller chunks
+        chunk_size = 1024
+        total_size = len(img_bytes)
+        sent = 0
         
-        while (time.time() - start_time) < timeout:
-            if ser.in_waiting:
-                response = ser.readline().decode().strip()
-                print(f"ESP32 response: {response}")
-                if response == "DONE":
-                    print("Image processed successfully")
-                    break
-                elif response.startswith("ERROR"):
-                    print(f"ESP32 reported error: {response}")
-                    break
-            time.sleep(0.1)
-        
+        while sent < total_size:
+            current_chunk = min(chunk_size, total_size - sent)
+            chunk = img_bytes[sent:sent + current_chunk]
+            ser.write(chunk)
+            ser.flush()  # Ensure data is sent
+            
+            # Add a small delay between chunks
+            time.sleep(0.001)
+            
+            sent += current_chunk
+            print(f"Sent {sent}/{total_size} bytes")
+            
+        print("Transfer complete")
         ser.close()
-        print("Done")
         
     except Exception as e:
         print(f"Error: {e}")
@@ -127,8 +79,7 @@ def send_image(port, image_path, baud_rate=115200):
 if __name__ == "__main__":
     PORT = "/dev/cu.SLAB_USBtoUART"
     IMAGE_PATH = input("Enter the path to the image file: ").strip()
-    
     if not os.path.isfile(IMAGE_PATH):
         print(f"ERROR: File '{IMAGE_PATH}' does not exist.")
     else:
-        send_image(PORT, IMAGE_PATH)
+        send_image(PORT, image_path=IMAGE_PATH)

@@ -6,6 +6,8 @@
 #include "inference_handler.h"
 #include "esp_cpu.h"
 #include <string.h>
+#include "esp_task_wdt.h"
+#include "esp_heap_caps.h"
 
 #ifndef MIN
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -13,115 +15,152 @@
 
 #define UART_NUM UART_NUM_0
 #define BUF_SIZE 1024
-#define IMAGE_SIZE (224 * 224 * 3)
+#define IMAGE_SIZE (64 * 64 * 3) // 12,288 bytes
 #define START_MARKER "START:"
 #define END_MARKER "END\n"
 #define BUFFER_SIZE 1024
 
 static const char* TAG = "Main";
 
-static void receive_image(void) {
+#define UART_BUF_SIZE (1024)
+#define UART_PORT_NUM UART_NUM_0
+#define UART_BAUD_RATE 115200
+
+static void configure_uart(void) {
+    uart_config_t uart_config = {
+        .baud_rate = UART_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+    ESP_ERROR_CHECK(uart_driver_install(UART_PORT_NUM, UART_BUF_SIZE * 2, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(UART_PORT_NUM, &uart_config));
+    ESP_LOGI(TAG, "UART configured with baud rate %d", UART_BAUD_RATE);
+}
+
+static void receive_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Receive task started");
+
+    // Register this task with the watchdog
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+
+    // Allocate buffer with error checking
     uint8_t* image_buffer = (uint8_t*)heap_caps_malloc(IMAGE_SIZE, MALLOC_CAP_SPIRAM);
     if (!image_buffer) {
         ESP_LOGE(TAG, "Failed to allocate image buffer");
+        vTaskDelete(NULL);
         return;
     }
+    ESP_LOGI(TAG, "Image buffer allocated in PSRAM");
 
-    uint8_t temp_buffer[BUFFER_SIZE];
-    int received = 0;
-    bool started = false;
-    int len;
-    int expected_size = IMAGE_SIZE;
-
-    // Wait for START message
-    ESP_LOGI(TAG, "Waiting for START message...");
-    while (!started) {
-        len = uart_read_bytes(UART_NUM, temp_buffer, BUFFER_SIZE, pdMS_TO_TICKS(1000));
-        if (len > 0) {
-            temp_buffer[len] = '\0';
-            if (strstr((char*)temp_buffer, "START:")) {
-                started = true;
-                ESP_LOGI(TAG, "Start marker received");
-            }
-        }
+    // Initialize variables
+    size_t total_received = 0;
+    uint8_t* temp_buffer = (uint8_t*)heap_caps_malloc(UART_BUF_SIZE, MALLOC_CAP_INTERNAL);
+    if (!temp_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate temp buffer");
+        heap_caps_free(image_buffer);
+        vTaskDelete(NULL);
+        return;
     }
+    ESP_LOGI(TAG, "Temp buffer allocated in internal memory");
 
-    // Receive image data
-    while (received < expected_size) {
-        len = uart_read_bytes(UART_NUM, temp_buffer, 
-            MIN(BUFFER_SIZE, expected_size - received), 
-            pdMS_TO_TICKS(1000));
+    while (1) {
+        esp_task_wdt_reset();  // Reset watchdog in the main loop
         
-        if (len > 0) {
-            // Check for END marker in this chunk
-            bool end_found = false;
-            int data_len = len;
-            for (int i = 0; i < len - 3; i++) {
-                if (temp_buffer[i] == 'E' && temp_buffer[i+1] == 'N' && 
-                    temp_buffer[i+2] == 'D' && temp_buffer[i+3] == '\n') {
-                    data_len = i;  // Only copy data before END marker
-                    end_found = true;
-                    break;
+        if (total_received >= IMAGE_SIZE) {
+            ESP_LOGI(TAG, "Image received, running inference");
+            run_inference(image_buffer);
+            total_received = 0;
+        }
+        
+        if (total_received < IMAGE_SIZE) {
+            // Add timeout to prevent infinite blocking
+            int len = uart_read_bytes(UART_PORT_NUM, 
+                                    temp_buffer, 
+                                    MIN(UART_BUF_SIZE, IMAGE_SIZE - total_received), 
+                                    pdMS_TO_TICKS(100));
+            
+            if (len > 0) {
+                if (total_received + len <= IMAGE_SIZE) {
+                    memcpy(image_buffer + total_received, temp_buffer, len);
+                    total_received += len;
+                    ESP_LOGI(TAG, "Received %d/%d bytes", total_received, IMAGE_SIZE);
+                } else {
+                    ESP_LOGW(TAG, "Received bytes exceed IMAGE_SIZE");
+                    total_received = IMAGE_SIZE; // Force inference
                 }
+            } else {
+                ESP_LOGD(TAG, "No bytes received in this iteration");
             }
 
-            // Copy valid data to image buffer
-            if (received + data_len <= expected_size) {
-                memcpy(image_buffer + received, temp_buffer, data_len);
-                received += data_len;
-                ESP_LOGI(TAG, "Received %d/%d bytes", received, expected_size);
-            }
+            // Yield to prevent watchdog triggers
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
 
-            if (end_found) {
-                break;
-            }
-        } else {
-            ESP_LOGE(TAG, "Timeout waiting for data");
-            free(image_buffer);
-            return;
+        // Periodically log free heap
+        static TickType_t last_log_time = 0;
+        if (xTaskGetTickCount() - last_log_time > pdMS_TO_TICKS(5000)) {
+            size_t free_heap_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+            size_t free_heap_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            ESP_LOGI(TAG, "Free PSRAM: %d bytes, Free Internal: %d bytes", free_heap_psram, free_heap_internal);
+            last_log_time = xTaskGetTickCount();
         }
     }
 
-    if (received == expected_size) {
-        ESP_LOGI(TAG, "Image received successfully, running inference");
-        run_inference(image_buffer);
-        uart_write_bytes(UART_NUM, "DONE\n", 5);
-    } else {
-        ESP_LOGE(TAG, "Received incomplete image: %d/%d bytes", received, expected_size);
-        uart_write_bytes(UART_NUM, "ERROR:INCOMPLETE\n", 16);
-    }
-
-    free(image_buffer);
+    // Cleanup (unreachable in this context)
+    heap_caps_free(temp_buffer);
+    heap_caps_free(image_buffer);
 }
 
 void app_main(void) {
     ESP_LOGI(TAG, "Initializing...");
-    
-    // Initialize UART with larger buffers
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+
+    // Define and initialize the watchdog configuration
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = 20000,  // 20 seconds timeout
+        .idle_core_mask = 0,  // Apply to all cores
+        .trigger_panic = true // Trigger panic on timeout
     };
-    
-    uart_param_config(UART_NUM, &uart_config);
-    uart_driver_install(UART_NUM, BUF_SIZE * 2, BUF_SIZE * 2, 0, NULL, 0);
-    uart_flush(UART_NUM);
-    
+
+    // Initialize Task Watchdog with the configuration
+    esp_err_t wdt_init_result = esp_task_wdt_init(&wdt_config);
+    if (wdt_init_result != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize task watchdog: %s", esp_err_to_name(wdt_init_result));
+    } else {
+        esp_task_wdt_add(NULL); // Add current task (app_main) to WDT
+    }
+
+    // Configure UART
+    configure_uart();
+
     // Initialize inference handler
     if (setup_inference() != 0) {
         ESP_LOGE(TAG, "Failed to setup inference");
         cleanup_inference();
         return;
     }
-    
-    ESP_LOGI(TAG, "Initialization complete. Waiting for images...");
-    
-    // Continuously receive images
-    while (1) {
-        receive_image();
-        vTaskDelay(pdMS_TO_TICKS(500));  // Delay between attempts
+    ESP_LOGI(TAG, "Inference handler initialized");
+
+    // Create and start the receive task
+    BaseType_t result = xTaskCreatePinnedToCore(
+        receive_task,          // Task function
+        "receive_task",        // Task name
+        8192,                  // Stack size (8 KB)
+        NULL,                  // Task parameters
+        5,                     // Priority
+        NULL,                  // Task handle
+        0                      // Run on core 0
+    );
+
+    if (result == pdPASS) {
+        ESP_LOGI(TAG, "Receive task created successfully");
+    } else {
+        ESP_LOGE(TAG, "Failed to create receive task");
+        cleanup_inference();
     }
+
+    // Let app_main finish to avoid blocking
+    ESP_LOGI(TAG, "app_main completed");
 }
