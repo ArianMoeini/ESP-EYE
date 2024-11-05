@@ -161,10 +161,30 @@ with open(tflite_model_file, 'wb') as f:
 def convert_to_c_array(model_path, output_path):
     with open(model_path, 'rb') as f:
         model_data = f.read()
-    hex_data = ', '.join(f'0x{b:02x}' for b in model_data)
-    c_array = f'const unsigned char model[] = {{{hex_data}}};\nunsigned int model_len = {len(model_data)};'
+    
+    # Create C header file content
+    c_header = """// Auto-generated file from model.tflite
+#ifndef MODEL_TFLITE_H
+#define MODEL_TFLITE_H
+
+const unsigned char model_tflite[] = {
+"""
+    
+    # Convert bytes to hex format, 16 values per line
+    hex_lines = []
+    for i in range(0, len(model_data), 16):
+        line_bytes = model_data[i:i+16]
+        hex_line = ', '.join(f'0x{b:02x}' for b in line_bytes)
+        hex_lines.append(hex_line)
+    
+    c_header += ',\n'.join('    ' + line for line in hex_lines)
+    c_header += "\n};\n\n"
+    c_header += f"const unsigned int model_tflite_len = {len(model_data)};\n\n"
+    c_header += "#endif  // MODEL_TFLITE_H\n"
+    
+    # Write to file
     with open(output_path, 'w') as f:
-        f.write(c_array)
+        f.write(c_header)
 
 convert_to_c_array(tflite_model_file, 'model.h')
 
