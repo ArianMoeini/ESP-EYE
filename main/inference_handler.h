@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 // Constants
-#define IMAGE_SIZE (224 * 224 * 3)
+#define IMAGE_SIZE (64 * 64 * 3)
 
 // Function declarations
 int setup_inference(void);

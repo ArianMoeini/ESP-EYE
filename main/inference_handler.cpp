@@ -157,14 +157,14 @@ void run_inference(const uint8_t* image_buffer) {
         ESP_LOGI(TAG, "Class 0: %.2f%%", results[0] * 100);
     } else if (output->type == kTfLiteUInt8) {
         uint8_t* results = output->data.uint8;
-        float scale = output->params.scale;
-        int zero_point = output->params.zero_point;
+        float scale = 0.00390625f;  // From quantization parameters
+        int zero_point = 0;         // From quantization parameters
         float probability = (results[0] - zero_point) * scale;
         
         ESP_LOGI(TAG, "Inference results:");
-        ESP_LOGI(TAG, "Probability of Hippo: %.2f%%", probability * 100);
+        ESP_LOGI(TAG, "Probability of PNEUMONIA: %.2f%%", probability * 100);
         ESP_LOGI(TAG, "Classification: %s", 
-                 (probability >= 0.5) ? "HIPPO DETECTED" : "NO HIPPO DETECTED");
+                (probability >= 0.5) ? "PNEUMONIA" : "NORMAL");
     }
 }
 
@@ -181,10 +181,8 @@ void cleanup_inference(void) {
 void initialize_inference() {
     // ... existing code ...
     
-    // Log detailed quantization info
+    // Log quantization parameters
     ESP_LOGI(TAG, "Model Quantization Parameters:");
     ESP_LOGI(TAG, "Input - Zero point: %" PRId32 ", Scale: %f", 
              input->params.zero_point, input->params.scale);
-    ESP_LOGI(TAG, "Output - Zero point: %" PRId32 ", Scale: %f",
-             output->params.zero_point, output->params.scale);
 }
