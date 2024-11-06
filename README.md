@@ -99,3 +99,28 @@ The image classification model is based on the CIFAR-10 dataset, capable of clas
 - Ensure all connections are secure
 - Verify that the serial monitor is set to the correct baud rate (typically 115200)
 - Check that the static image data is correctly included in the build
+
+## Additional Setup Requirements
+
+### Git Submodules
+After cloning, initialize the required submodules:
+```bash
+git submodule update --init --recursive
+```
+
+### Model Setup
+Option 1: Using pre-trained model
+1. Download the pre-trained model file from the [Releases page](https://github.com/ArianMoeini/ESP-EYE/releases/tag/v1)
+2. Place `cifar10_model_quant.tflite` in the `trainingModel` directory
+3. Generate model.h:
+   ```bash
+   xxd -i cifar10_model_quant.tflite > model.h
+   ```
+
+Option 2: Training your own model
+1. Install required packages:
+   ```bash
+   pip install tensorflow matplotlib scikit-learn
+   ```
+2. Run the training notebook in trainingModel/trainingModelREAL.ipynb
+3. Follow the model conversion steps in the notebook
