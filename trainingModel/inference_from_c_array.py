@@ -124,3 +124,15 @@ with open(OUTPUT_FILE, 'w') as f:
     f.write(f"Accuracy: {accuracy:.2f}%\n")
 
 print(f"Inference completed. Results saved to {OUTPUT_FILE}.")
+
+# After loading the model and getting input/output details
+print("\nQuantization Parameters:")
+print(f"Input - Scale: {input_details[0]['quantization'][0]}, Zero point: {input_details[0]['quantization'][1]}")
+print(f"Output - Scale: {output_details[0]['quantization'][0]}, Zero point: {output_details[0]['quantization'][1]}")
+
+# Or add this right after interpreter setup:
+details = interpreter.get_input_details()[0]
+print(f"\nInput Tensor Details:")
+print(f"Shape: {details['shape']}")
+print(f"Dtype: {details['dtype']}")
+print(f"Quantization: scale={details['quantization'][0]}, zero_point={details['quantization'][1]}")

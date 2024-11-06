@@ -5,22 +5,24 @@ import cv2
 import numpy as np
 
 def preprocess_image(img):
-    # Ensure RGB order (TFLite typically expects RGB)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = cv2.resize(img, (64, 64))
     
-    # Print detailed stats per channel
-    print("\nChannel statistics:")
-    for i, channel in enumerate(['R', 'G', 'B']):
-        values = img[:,:,i]
-        print(f"{channel}: min={values.min()}, max={values.max()}, mean={values.mean():.2f}")
+    # Print detailed image statistics
+    print("\nImage statistics:")
+    for channel, name in enumerate(['R', 'G', 'B']):
+        channel_data = img[:,:,channel]
+        print(f"{name} channel - min: {channel_data.min()}, "
+              f"max: {channel_data.max()}, "
+              f"mean: {channel_data.mean():.2f}, "
+              f"std: {channel_data.std():.2f}")
     
-    # Print 3x3 grid of pixel values
-    print("\nSampling 3x3 grid across image:")
-    for y in range(0, 64, 32):
-        for x in range(0, 64, 32):
+    # Sample 4x4 grid
+    print("\nSampling 4x4 grid:")
+    for y in range(0, 64, 16):
+        for x in range(0, 64, 16):
             pixel = img[y,x]
-            print(f"Position ({x},{y}): R={pixel[0]} G={pixel[1]} B={pixel[2]}")
+            print(f"({x},{y}): R={pixel[0]} G={pixel[1]} B={pixel[2]}")
     
     return img
 
